@@ -55,4 +55,4 @@ __pycache__/
 /test/visual/mpl/visual_test_failures/*.png
 
 # Do not push results to remote
-glasgow_vf2_results/
+glasgow_vf2_results*/

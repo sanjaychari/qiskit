@@ -386,6 +386,7 @@ def make_callback():
                 "solver_runtime_ms",
                 "wall_runtime_ms",
                 "mappings_examined",
+                "scoring_runtime_ms",
                 "baseline_score",
                 "score",
             ):
@@ -534,6 +535,9 @@ for repeat in range(REPEATS):
             ),
             "glasgow_post_mappings_examined": details.get(
                 "glasgow_post_mappings_examined", ""
+            ),
+            "glasgow_post_scoring_runtime_ms": details.get(
+                "glasgow_post_scoring_runtime_ms", ""
             ),
             "glasgow_post_baseline_score": details.get(
                 "glasgow_post_baseline_score", ""

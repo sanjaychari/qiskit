@@ -13,17 +13,17 @@
 """Experimental GlasgowPostLayout pass."""
 
 from enum import Enum
+from time import perf_counter
 
+from qiskit._accelerate.glasgow_score import score_mappings
 from qiskit.transpiler.basepasses import AnalysisPass
 from qiskit.transpiler.exceptions import TranspilerError
 from qiskit.transpiler.layout import Layout
 
 from ._glasgow_utils import (
     GlasgowMultiQEncountered,
-    complete_mapping,
     interaction_graph,
     run_glasgow,
-    score_mapping,
     target_graph,
     write_stats,
 )
@@ -94,26 +94,17 @@ class GlasgowPostLayout(AnalysisPass):
         )
         write_stats(self.property_set, "GlasgowPostLayout", result)
 
-        identity = {index: index for index in range(dag.num_qubits())}
-        baseline = score_mapping(
-            dag, self.target, identity, strict_direction=self.strict_direction
+        scoring_start = perf_counter()
+        best, baseline, best_score = score_mappings(
+            dag,
+            self.target,
+            result.mappings,
+            strict_direction=self.strict_direction,
+            prefer_identity=True,
         )
-        best = None
-        best_score = baseline
-
-        for partial in result.mappings:
-            candidate = complete_mapping(
-                partial, dag.num_qubits(), num_physical, prefer_identity=True
-            )
-            if candidate is None:
-                continue
-            score = score_mapping(
-                dag, self.target, candidate, strict_direction=self.strict_direction
-            )
-            if score + 1e-15 < best_score:
-                best = candidate
-                best_score = score
-
+        self.property_set["GlasgowPostLayout_scoring_runtime_ms"] = (
+            perf_counter() - scoring_start
+        ) * 1000.0
         self.property_set["GlasgowPostLayout_baseline_score"] = baseline
         self.property_set["GlasgowPostLayout_score"] = best_score
 

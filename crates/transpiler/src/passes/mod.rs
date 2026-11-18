@@ -38,6 +38,7 @@ mod elide_permutations;
 mod filter_op_nodes;
 mod gate_direction;
 mod gates_in_basis;
+mod glasgow_score;
 mod high_level_synthesis;
 mod instruction_duration_check;
 mod inverse_cancellation;
@@ -78,6 +79,7 @@ pub use gate_direction::{
     fix_direction_target, gate_direction_mod,
 };
 pub use gates_in_basis::{gates_in_basis_mod, gates_missing_from_basis, gates_missing_from_target};
+pub use glasgow_score::glasgow_score_mod;
 pub use high_level_synthesis::{
     HighLevelSynthesisData, high_level_synthesis_mod, run_high_level_synthesis,
 };
