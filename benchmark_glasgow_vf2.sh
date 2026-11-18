@@ -274,14 +274,15 @@ def property_value(property_set, name):
 
 
 def serialize_post_layout(layout, dag):
-    """Return deterministic JSON for a post-layout mapping and its physical subgraph.
+    """Return deterministic JSON for full and active post-layout mappings.
 
-    The mapping is stored as ``[[dag_qubit, physical_qubit], ...]`` so that the
-    exact VF2 and Glasgow mappings can be compared directly.  The second value
-    is the sorted set of physical qubits used by that mapping.
+    The full mapping includes idle DAG wires because post-layout produces a
+    complete layout over the routed DAG.  The active mapping contains only
+    wires touched by non-barrier, non-delay operations, which lets us compare
+    the physical subgraphs actually used by VF2 and Glasgow.
     """
     if layout is None:
-        return "", ""
+        return "", "", "", ""
 
     qubit_indices = {qubit: index for index, qubit in enumerate(dag.qubits)}
     mapping = sorted(
@@ -291,9 +292,30 @@ def serialize_post_layout(layout, dag):
     )
     physical_qubits = sorted({physical for _, physical in mapping})
 
+    active_virtual_qubits = set()
+    for node in dag.op_nodes():
+        if getattr(node.op, "name", None) in {"barrier", "delay"}:
+            continue
+        active_virtual_qubits.update(
+            qubit_indices[qubit]
+            for qubit in node.qargs
+            if qubit in qubit_indices
+        )
+
+    active_mapping = [
+        (virtual, physical)
+        for virtual, physical in mapping
+        if virtual in active_virtual_qubits
+    ]
+    active_physical_qubits = sorted(
+        {physical for _, physical in active_mapping}
+    )
+
     return (
         json.dumps(mapping, separators=(",", ":")),
         json.dumps(physical_qubits, separators=(",", ":")),
+        json.dumps(active_mapping, separators=(",", ":")),
+        json.dumps(active_physical_qubits, separators=(",", ":")),
     )
 
 
@@ -401,6 +423,8 @@ def make_callback():
             (
                 details["post_layout_mapping"],
                 details["post_layout_physical_qubits"],
+                details["post_layout_active_mapping"],
+                details["post_layout_active_physical_qubits"],
             ) = serialize_post_layout(
                 property_value(property_set, "post_layout"),
                 dag,
@@ -413,6 +437,8 @@ def make_callback():
             (
                 details["post_layout_mapping"],
                 details["post_layout_physical_qubits"],
+                details["post_layout_active_mapping"],
+                details["post_layout_active_physical_qubits"],
             ) = serialize_post_layout(
                 property_value(property_set, "post_layout"),
                 dag,
@@ -532,6 +558,12 @@ for repeat in range(REPEATS):
             ),
             "post_layout_physical_qubits": details.get(
                 "post_layout_physical_qubits", ""
+            ),
+            "post_layout_active_mapping": details.get(
+                "post_layout_active_mapping", ""
+            ),
+            "post_layout_active_physical_qubits": details.get(
+                "post_layout_active_physical_qubits", ""
             ),
 
             "output_depth": result.depth(),
