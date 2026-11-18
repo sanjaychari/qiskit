@@ -273,6 +273,30 @@ def property_value(property_set, name):
     return value
 
 
+def serialize_post_layout(layout, dag):
+    """Return deterministic JSON for a post-layout mapping and its physical subgraph.
+
+    The mapping is stored as ``[[dag_qubit, physical_qubit], ...]`` so that the
+    exact VF2 and Glasgow mappings can be compared directly.  The second value
+    is the sorted set of physical qubits used by that mapping.
+    """
+    if layout is None:
+        return "", ""
+
+    qubit_indices = {qubit: index for index, qubit in enumerate(dag.qubits)}
+    mapping = sorted(
+        (qubit_indices[virtual], int(physical))
+        for virtual, physical in layout.get_virtual_bits().items()
+        if virtual in qubit_indices
+    )
+    physical_qubits = sorted({physical for _, physical in mapping})
+
+    return (
+        json.dumps(mapping, separators=(",", ":")),
+        json.dumps(physical_qubits, separators=(",", ":")),
+    )
+
+
 def estimated_error_score(transpiled_circuit):
     """Approximate -log(success probability) from target gate errors.
 
@@ -336,6 +360,7 @@ def make_callback():
         pass_object = kwargs["pass_"]
         elapsed = float(kwargs["time"])
         property_set = kwargs["property_set"]
+        dag = kwargs["dag"]
 
         name = pass_object.__class__.__name__
 
@@ -373,10 +398,24 @@ def make_callback():
             details["post_stop_reason"] = normalize_reason(
                 property_value(property_set, "VF2PostLayout_stop_reason")
             )
+            (
+                details["post_layout_mapping"],
+                details["post_layout_physical_qubits"],
+            ) = serialize_post_layout(
+                property_value(property_set, "post_layout"),
+                dag,
+            )
 
         elif name == "GlasgowPostLayout":
             details["post_stop_reason"] = normalize_reason(
                 property_value(property_set, "GlasgowPostLayout_stop_reason")
+            )
+            (
+                details["post_layout_mapping"],
+                details["post_layout_physical_qubits"],
+            ) = serialize_post_layout(
+                property_value(property_set, "post_layout"),
+                dag,
             )
 
             for key in (
@@ -488,12 +527,19 @@ for repeat in range(REPEATS):
             "post_stop_reason": details.get(
                 "post_stop_reason", ""
             ),
+            "post_layout_mapping": details.get(
+                "post_layout_mapping", ""
+            ),
+            "post_layout_physical_qubits": details.get(
+                "post_layout_physical_qubits", ""
+            ),
 
             "output_depth": result.depth(),
             "output_size": result.size(),
             "output_2q_count": two_qubit_count(result),
 
             "estimated_error_nll": error_score,
+            "estimated_error_nll_is_finite": math.isfinite(error_score),
             "estimated_error_gate_count": error_gate_count,
 
             "glasgow_initial_status": details.get(
@@ -616,9 +662,18 @@ for variant_name, _, _ in variants:
     mean_2q = statistics.mean(
         row["output_2q_count"] for row in subset
     )
-    mean_error = statistics.mean(
+    error_values = [
         row["estimated_error_nll"] for row in subset
+    ]
+    finite_error_values = [
+        value for value in error_values if math.isfinite(value)
+    ]
+    mean_error = (
+        statistics.mean(finite_error_values)
+        if finite_error_values
+        else float("nan")
     )
+    nonfinite_error_runs = len(error_values) - len(finite_error_values)
 
     print(
         f"{variant_name:18s} "
@@ -628,7 +683,8 @@ for variant_name, _, _ in variants:
         f"post={mean_post:8.4f}s  "
         f"depth={mean_depth:8.1f}  "
         f"2q={mean_2q:8.1f}  "
-        f"error_nll={mean_error:.6f}"
+        f"error_nll_finite_mean={mean_error:.6f}  "
+        f"nonfinite_error_runs={nonfinite_error_runs}/{len(error_values)}"
     )
 
 print()
