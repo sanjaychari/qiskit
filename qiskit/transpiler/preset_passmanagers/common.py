@@ -48,8 +48,11 @@ from qiskit.transpiler.passes import InstructionDurationCheck
 from qiskit.transpiler.passes import ConstrainedReschedule
 from qiskit.transpiler.passes import ContainsInstruction
 from qiskit.transpiler.passes import VF2PostLayout
+from qiskit.transpiler.passes import GlasgowPostLayout
 from qiskit.transpiler.passes.layout.vf2_layout import VF2LayoutStopReason
 from qiskit.transpiler.passes.layout.vf2_post_layout import VF2PostLayoutStopReason
+from qiskit.transpiler.passes.layout.glasgow_layout import GlasgowLayoutStopReason
+from qiskit.transpiler.passes.layout.glasgow_post_layout import GlasgowPostLayoutStopReason
 from qiskit.transpiler.passes import WrapAngles
 from qiskit.transpiler.exceptions import TranspilerError
 from qiskit.transpiler.layout import Layout
@@ -290,11 +293,11 @@ def _layout_not_perfect(property_set):
 
 
 def _apply_post_layout_condition(property_set):
-    # if VF2 Post layout found a solution we need to re-apply the better
-    # layout. Otherwise we can skip apply layout.
+    # If either post-layout solver found an improved solution, re-apply the layout.
     return (
-        property_set["VF2PostLayout_stop_reason"] is not None
-        and property_set["VF2PostLayout_stop_reason"] is VF2PostLayoutStopReason.SOLUTION_FOUND
+        property_set["VF2PostLayout_stop_reason"] is VF2PostLayoutStopReason.SOLUTION_FOUND
+        or property_set["GlasgowPostLayout_stop_reason"]
+        is GlasgowPostLayoutStopReason.SOLUTION_FOUND
     )
 
 
@@ -307,6 +310,7 @@ def generate_routing_passmanager(
     check_trivial=False,
     use_barrier_before_measurement=True,
     vf2_max_trials=None,
+    post_layout_search_method="vf2",
 ):
     """Generate a routing :class:`~qiskit.transpiler.PassManager`
 
@@ -341,12 +345,17 @@ def generate_routing_passmanager(
     """
 
     def _run_post_layout_condition(property_set):
-        # If we check trivial layout and the found trivial layout was not perfect also
-        # ensure VF2 initial layout was not used before running vf2 post layout
+        # Do not run post-layout relocation when either exact initial-layout solver already found
+        # a perfect embedding.
         if not check_trivial or _layout_not_perfect(property_set):
-            vf2_stop_reason = property_set["VF2Layout_stop_reason"]
-            if vf2_stop_reason is None or vf2_stop_reason != VF2LayoutStopReason.SOLUTION_FOUND:
-                return True
+            if property_set["VF2Layout_stop_reason"] is VF2LayoutStopReason.SOLUTION_FOUND:
+                return False
+            if (
+                property_set["GlasgowLayout_stop_reason"]
+                is GlasgowLayoutStopReason.SOLUTION_FOUND
+            ):
+                return False
+            return True
         return False
 
     routing = PassManager()
@@ -375,17 +384,28 @@ def generate_routing_passmanager(
 
     is_vf2_fully_bounded = vf2_call_limit and vf2_max_trials
     if target is not None and is_vf2_fully_bounded:
-        routing.append(
-            ConditionalController(
-                VF2PostLayout(
-                    target,
-                    seed=seed_transpiler,
-                    call_limit=vf2_call_limit,
-                    max_trials=vf2_max_trials,
-                    strict_direction=False,
-                ),
-                condition=_run_post_layout_condition,
+        if post_layout_search_method == "vf2":
+            post_layout = VF2PostLayout(
+                target,
+                seed=seed_transpiler,
+                call_limit=vf2_call_limit,
+                max_trials=vf2_max_trials,
+                strict_direction=False,
             )
+        elif post_layout_search_method == "glasgow":
+            post_layout = GlasgowPostLayout(
+                target,
+                seed=seed_transpiler,
+                call_limit=vf2_call_limit,
+                max_trials=vf2_max_trials,
+                strict_direction=False,
+            )
+        else:
+            raise TranspilerError(
+                "post_layout_search_method must be either 'vf2' or 'glasgow'"
+            )
+        routing.append(
+            ConditionalController(post_layout, condition=_run_post_layout_condition)
         )
         routing.append(ConditionalController(ApplyLayout(), condition=_apply_post_layout_condition))
 

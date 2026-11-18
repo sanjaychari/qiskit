@@ -26,6 +26,8 @@ from qiskit.transpiler.passes import SabreSwap
 from qiskit.transpiler.passes import Error
 from qiskit.transpiler.passes import SetLayout
 from qiskit.transpiler.passes import VF2Layout
+from qiskit.transpiler.passes import GlasgowLayout
+from qiskit.transpiler.passes import GlasgowPostLayout
 from qiskit.transpiler.passes import SabreLayout
 from qiskit.transpiler.passes import DenseLayout
 from qiskit.transpiler.passes import TrivialLayout
@@ -64,6 +66,7 @@ from qiskit.transpiler.passes.synthesis.unitary_synthesis import UnitarySynthesi
 from qiskit.passmanager.flow_controllers import ConditionalController, DoWhileController
 from qiskit.transpiler.timing_constraints import TimingConstraints
 from qiskit.transpiler.passes.layout.vf2_layout import VF2LayoutStopReason
+from qiskit.transpiler.passes.layout.glasgow_layout import GlasgowLayoutStopReason
 from qiskit.circuit.equivalence_library import SessionEquivalenceLibrary as sel
 from qiskit.circuit.controlflow import CONTROL_FLOW_OP_NAMES
 from qiskit.quantum_info.operators.symplectic.clifford_circuits import get_clifford_gate_names
@@ -402,6 +405,7 @@ class SabreSwapPassManager(PassManagerStagePlugin):
                 coupling_map=coupling_map,
                 seed_transpiler=-1,
                 use_barrier_before_measurement=True,
+                post_layout_search_method=pass_manager_config.post_layout_search_method,
             )
         if optimization_level == 1:
             trial_count = _get_trial_count(5)
@@ -420,6 +424,7 @@ class SabreSwapPassManager(PassManagerStagePlugin):
                 seed_transpiler=-1,
                 check_trivial=True,
                 use_barrier_before_measurement=True,
+                post_layout_search_method=pass_manager_config.post_layout_search_method,
             )
         if optimization_level == 2:
             trial_count = _get_trial_count(20)
@@ -438,6 +443,7 @@ class SabreSwapPassManager(PassManagerStagePlugin):
                 vf2_max_trials=vf2_max_trials,
                 seed_transpiler=-1,
                 use_barrier_before_measurement=True,
+                post_layout_search_method=pass_manager_config.post_layout_search_method,
             )
         if optimization_level == 3:
             trial_count = _get_trial_count(20)
@@ -455,6 +461,7 @@ class SabreSwapPassManager(PassManagerStagePlugin):
                 vf2_max_trials=vf2_max_trials,
                 seed_transpiler=-1,
                 use_barrier_before_measurement=True,
+                post_layout_search_method=pass_manager_config.post_layout_search_method,
             )
         raise TranspilerError(f"Invalid optimization level specified: {optimization_level}")
 
@@ -610,14 +617,28 @@ class OptimizationPassManager(PassManagerStagePlugin):
                         exact_match=True,
                     )
                     if vf2_call_limit and vf2_max_trials:
-                        post_loop += [
-                            VF2PostLayout(
+                        if pass_manager_config.post_layout_search_method == "vf2":
+                            post_layout = VF2PostLayout(
                                 target=pass_manager_config.target,
                                 seed=-1,
                                 call_limit=vf2_call_limit,
                                 max_trials=vf2_max_trials,
                                 strict_direction=True,
-                            ),
+                            )
+                        elif pass_manager_config.post_layout_search_method == "glasgow":
+                            post_layout = GlasgowPostLayout(
+                                target=pass_manager_config.target,
+                                seed=-1,
+                                call_limit=vf2_call_limit,
+                                max_trials=vf2_max_trials,
+                                strict_direction=True,
+                            )
+                        else:
+                            raise TranspilerError(
+                                "post_layout_search_method must be either 'vf2' or 'glasgow'"
+                            )
+                        post_loop += [
+                            post_layout,
                             ConditionalController(
                                 ApplyLayout(), condition=common._apply_post_layout_condition
                             ),
@@ -702,6 +723,15 @@ class DefaultLayoutPassManager(PassManagerStagePlugin):
 
     def pass_manager(self, pass_manager_config, optimization_level=None) -> PassManager:
         _given_layout = SetLayout(pass_manager_config.initial_layout)
+        initial_search_method = pass_manager_config.initial_layout_search_method
+        if initial_search_method == "vf2":
+            layout_search_class = VF2Layout
+        elif initial_search_method == "glasgow":
+            layout_search_class = GlasgowLayout
+        else:
+            raise TranspilerError(
+                "initial_layout_search_method must be either 'vf2' or 'glasgow'"
+            )
 
         def _choose_layout_condition(property_set):
             return not property_set["layout"]
@@ -711,17 +741,16 @@ class DefaultLayoutPassManager(PassManagerStagePlugin):
             imperfect.  In this case, perfection means "does not require any swap routing"."""
             return property_set["is_swap_mapped"] is not None and not property_set["is_swap_mapped"]
 
-        def _vf2_match_not_found(property_set):
-            # If a layout hasn't been set by the time we run vf2 layout we need to
-            # run layout
+        def _perfect_layout_match_not_found(property_set):
+            # At level 1, a failed exact search can leave the earlier trivial layout in place,
+            # so use the selected solver's stop reason rather than checking layout alone.
             if property_set["layout"] is None:
                 return True
-            # if VF2 layout stopped for any reason other than solution found we need
-            # to run layout since VF2 didn't converge.
-            return (
-                property_set["VF2Layout_stop_reason"] is not None
-                and property_set["VF2Layout_stop_reason"] is not VF2LayoutStopReason.SOLUTION_FOUND
-            )
+            if initial_search_method == "vf2":
+                reason = property_set["VF2Layout_stop_reason"]
+                return reason is not None and reason is not VF2LayoutStopReason.SOLUTION_FOUND
+            reason = property_set["GlasgowLayout_stop_reason"]
+            return reason is not None and reason is not GlasgowLayoutStopReason.SOLUTION_FOUND
 
         def _swap_mapped(property_set):
             return property_set["final_layout"] is None
@@ -753,7 +782,7 @@ class DefaultLayoutPassManager(PassManagerStagePlugin):
                     condition=_choose_layout_condition,
                 )
             )
-            choose_layout_1 = VF2Layout(
+            choose_layout_1 = layout_search_class(
                 coupling_map=pass_manager_config.coupling_map,
                 seed=-1,
                 call_limit=(50_000, 1_000),
@@ -779,11 +808,11 @@ class DefaultLayoutPassManager(PassManagerStagePlugin):
                         ),
                         choose_layout_2,
                     ],
-                    condition=_vf2_match_not_found,
+                    condition=_perfect_layout_match_not_found,
                 )
             )
         elif optimization_level == 2:
-            choose_layout_0 = VF2Layout(
+            choose_layout_0 = layout_search_class(
                 coupling_map=pass_manager_config.coupling_map,
                 seed=-1,
                 call_limit=(5_000_000, 10_000),
@@ -811,11 +840,11 @@ class DefaultLayoutPassManager(PassManagerStagePlugin):
                         ),
                         choose_layout_1,
                     ],
-                    condition=_vf2_match_not_found,
+                    condition=_perfect_layout_match_not_found,
                 )
             )
         elif optimization_level == 3:
-            choose_layout_0 = VF2Layout(
+            choose_layout_0 = layout_search_class(
                 coupling_map=pass_manager_config.coupling_map,
                 seed=-1,
                 call_limit=(30_000_000, 100_000),
@@ -843,7 +872,7 @@ class DefaultLayoutPassManager(PassManagerStagePlugin):
                         ),
                         choose_layout_1,
                     ],
-                    condition=_vf2_match_not_found,
+                    condition=_perfect_layout_match_not_found,
                 )
             )
         else:

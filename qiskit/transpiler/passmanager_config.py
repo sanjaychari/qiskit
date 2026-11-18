@@ -33,6 +33,8 @@ class PassManagerConfig:
         coupling_map: CouplingMap | None = None,
         layout_method: str | None = None,
         routing_method: str | None = None,
+        initial_layout_search_method: str = "vf2",
+        post_layout_search_method: str = "vf2",
         translation_method: str | None = None,
         scheduling_method: str | None = None,
         instruction_durations: InstructionDurations | None = None,
@@ -99,6 +101,8 @@ class PassManagerConfig:
         self.init_method = init_method
         self.layout_method = layout_method
         self.routing_method = routing_method
+        self.initial_layout_search_method = initial_layout_search_method
+        self.post_layout_search_method = post_layout_search_method
         self.translation_method = translation_method
         self.optimization_method = optimization_method
         self.scheduling_method = scheduling_method

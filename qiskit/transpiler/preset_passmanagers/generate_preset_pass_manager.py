@@ -65,6 +65,8 @@ def generate_preset_pass_manager(
     initial_layout: Layout | list[int] = None,
     layout_method: str | None = None,
     routing_method: str | None = None,
+    initial_layout_search_method: str = "vf2",
+    post_layout_search_method: str = "vf2",
     translation_method: str | None = None,
     scheduling_method: str | None = None,
     approximation_degree: float | None = 1.0,
@@ -162,6 +164,10 @@ def generate_preset_pass_manager(
             name to use for the ``routing`` stage of the output :class:`~.StagedPassManager`.
             You can see a list of installed plugins by using :func:`~.list_stage_plugins` with
             ``"routing"`` for the ``stage_name`` argument.
+        initial_layout_search_method: Subgraph-isomorphism solver used inside the default
+            layout stage. Valid values are ``"vf2"`` and ``"glasgow"``.
+        post_layout_search_method: Subgraph-isomorphism solver used for post-layout relocation.
+            Valid values are ``"vf2"`` and ``"glasgow"``.
         translation_method: The method to use for translating gates to
             basis gates. Valid choices ``'translator'``, ``'synthesis'`` representing
             :class:`~.BasisTranslator`, and :class:`~.UnitarySynthesis` respectively. This can
@@ -257,6 +263,8 @@ def generate_preset_pass_manager(
     specific_options = {
         "layout_method": layout_method,
         "routing_method": routing_method,
+        "initial_layout_search_method": initial_layout_search_method,
+        "post_layout_search_method": post_layout_search_method,
         "translation_method": translation_method,
         "scheduling_method": scheduling_method,
         "init_method": init_method,

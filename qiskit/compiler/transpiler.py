@@ -43,6 +43,8 @@ def transpile(
     initial_layout: Layout | dict | list | None = None,
     layout_method: str | None = None,
     routing_method: str | None = None,
+    initial_layout_search_method: str = "vf2",
+    post_layout_search_method: str = "vf2",
     translation_method: str | None = None,
     scheduling_method: str | None = None,
     dt: float | None = None,
@@ -152,6 +154,10 @@ def transpile(
             This can also be the external plugin name to use for the ``routing`` stage.
             You can see a list of installed plugins by using :func:`~.list_stage_plugins` with
             ``"routing"`` for the ``stage_name`` argument.
+        initial_layout_search_method: Subgraph-isomorphism solver used by the default layout
+            stage for the zero-SWAP layout search. Valid values are ``"vf2"`` and ``"glasgow"``.
+        post_layout_search_method: Subgraph-isomorphism solver used for post-layout relocation.
+            Valid values are ``"vf2"`` and ``"glasgow"``.
         translation_method: Name of translation pass (``"default"``, ``"translator"`` or
             ``"synthesis"``). This can also be the external plugin name to use for the
             ``translation`` stage.  You can see a list of installed plugins by using
@@ -311,6 +317,8 @@ def transpile(
         initial_layout=initial_layout,
         layout_method=layout_method,
         routing_method=routing_method,
+        initial_layout_search_method=initial_layout_search_method,
+        post_layout_search_method=post_layout_search_method,
         translation_method=translation_method,
         scheduling_method=scheduling_method,
         approximation_degree=approximation_degree,
