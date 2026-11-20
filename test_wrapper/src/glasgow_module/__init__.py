@@ -1,3 +1,5 @@
+# Code based on default plugin structure https://github.com/Qiskit/qiskit/blob/stable/2.5/qiskit/transpiler/preset_passmanagers/builtin_plugins.py
+
 import os
 
 from qiskit.transpiler.preset_passmanagers.plugin import PassManagerStagePlugin, PassManagerStagePluginManager
