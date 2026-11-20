@@ -14,7 +14,7 @@ authors = [
 ]
 version = "0.0.1"
 dependencies = [
-    "qiskit~=2.4.0",
+    "qiskit~=2.5.0",
 ]
 
 [project.entry-points."qiskit.transpiler.layout"]

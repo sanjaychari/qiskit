@@ -40,6 +40,7 @@ result = transpile(
     backend=backend,
     optimization_level=3,
     layout_method="glasgow",
+    routing_method="glasgow_post",
     seed_transpiler=42,
 )
 
