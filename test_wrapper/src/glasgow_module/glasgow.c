@@ -1,27 +1,32 @@
 #include "glasgow.h"
 
-/*
-
-Should only work here and not touch the API stuff. 
-
-Inputs are dag and target. 
-
-Helpful note: for the post method, the current mapping and routing are stored in dag, which is nice
-
-*/
-
-void glasgow_mapping(QkDag *dag, QkTarget *target, subgraph_vec mapping){
-
-    printf("HELLO FROM C...glasgow\n");
-
-    return NULL;
-
+int glasgow_qiskit_import(void)
+{
+    return qk_import();
 }
 
-void glasgow_mapping_post(QkDag *dag, QkTarget *target, subgraph_vec mapping){
+void glasgow_mapping(QkDag *dag, QkTarget *target, subgraph_vec mapping)
+{
+    printf("HELLO FROM C...glasgow\n");
 
+    QISKIT_NODE n = qk_dag_num_qubits(dag);
+
+    for (QISKIT_NODE i = 0; i < n; i++) {
+        mapping[i] = i;
+    }
+
+    return;
+}
+
+void glasgow_mapping_post(QkDag *dag, QkTarget *target, subgraph_vec mapping)
+{
     printf("HELLO FROM C...glasgow_post\n");
 
-    return NULL;
+    QISKIT_NODE n = qk_dag_num_qubits(dag);
 
+    for (QISKIT_NODE i = 0; i < n; i++) {
+        mapping[i] = i;
+    }
+
+    return;
 }

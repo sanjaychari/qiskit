@@ -1,5 +1,5 @@
 [qiskit.transpiler.layout]
-glasgow = your_package.plugin:GlasgowLayoutPassManager
+glasgow = glasgow_module:GlasgowLayoutPassManager
 
 [qiskit.transpiler.routing]
-glasgow_post = your_package.plugin:GlasgowRouting
+glasgow_post = glasgow_module:GlasgowRouting

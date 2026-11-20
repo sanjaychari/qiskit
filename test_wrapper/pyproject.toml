@@ -18,10 +18,10 @@ dependencies = [
 ]
 
 [project.entry-points."qiskit.transpiler.layout"]
-glasgow = "your_package.plugin:GlasgowLayoutPassManager"
+glasgow = "glasgow_module:GlasgowLayoutPassManager"
 
 [project.entry-points."qiskit.transpiler.routing"]
-glasgow_post = "your_package.plugin:GlasgowRouting"
+glasgow_post = "glasgow_module:GlasgowRouting"
 
 # If you intend to release your package, you should
 # also set the `license` information, and so on.

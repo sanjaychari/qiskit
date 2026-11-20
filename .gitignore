@@ -1,0 +1,8 @@
+.DS_Store
+glasgow_vf2_results*
+qiskit.egg-info
+qiskit
+target
+__pycache__/
+*.py[cod]
+*.so

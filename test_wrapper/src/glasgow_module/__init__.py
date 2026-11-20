@@ -31,10 +31,9 @@ class GlasgowLayout(AnalysisPass):
             target=self.target
         )
 
+        self.property_set["GlasgowLayout_found"] = layout is not None
         if layout is not None:
             self.property_set["layout"] = layout
-        
-        self.property_set["GlasgowLayout_found"] = layout is not None
 
         return None
 

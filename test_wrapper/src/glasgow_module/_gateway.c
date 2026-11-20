@@ -11,6 +11,7 @@ static bool init_python_vars(PyObject **dag, QkTarget **target, PyObject *args, 
         // be set, so we need to return the error indicator.
         return false;
     }
+    return true;
 }
 
 static PyObject *make_python_layout(
@@ -79,10 +80,12 @@ static PyObject *py_glasgow_mapping_post(PyObject *self, PyObject *args, PyObjec
 
     QkTarget *target;
     subgraph_vec mapping;
-    QkTranspileLayout *out;
+    PyObject *out;
     QISKIT_NODE N;
 
-    init_python_vars(&dag_pyobj, &target, args, kwargs);
+    if (!init_python_vars(&dag_pyobj, &target, args, kwargs)) {
+        return NULL;
+    }
 
     dag = qk_dag_borrow_from_python(dag_pyobj);
     N = qk_dag_num_qubits(dag);
@@ -90,6 +93,9 @@ static PyObject *py_glasgow_mapping_post(PyObject *self, PyObject *args, PyObjec
     // Now we have C-native types, we can delegate to our C logic.
 
     mapping = (subgraph_vec)malloc(qk_target_num_qubits(target) * sizeof(QISKIT_NODE));
+    if (!mapping) {
+        return PyErr_NoMemory();
+    }
     glasgow_mapping_post(dag, target, mapping);
     out = make_python_layout(dag_pyobj, mapping, N);
 
@@ -106,10 +112,12 @@ static PyObject *py_glasgow_mapping(PyObject *self, PyObject *args, PyObject *kw
 
     QkTarget *target;
     subgraph_vec mapping;
-    QkTranspileLayout *out;
+    PyObject *out;
     QISKIT_NODE N;
 
-    init_python_vars(&dag_pyobj, &target, args, kwargs);
+    if (!init_python_vars(&dag_pyobj, &target, args, kwargs)) {
+        return NULL;
+    }
 
     dag = qk_dag_borrow_from_python(dag_pyobj);
     N = qk_dag_num_qubits(dag);
@@ -117,6 +125,9 @@ static PyObject *py_glasgow_mapping(PyObject *self, PyObject *args, PyObject *kw
     // Now we have C-native types, we can delegate to our C logic.
 
     mapping = (subgraph_vec)malloc(qk_target_num_qubits(target) * sizeof(QISKIT_NODE));
+    if (!mapping) {
+        return PyErr_NoMemory();
+    }
     glasgow_mapping(dag, target, mapping);
     out = make_python_layout(dag_pyobj, mapping, N);
 
@@ -144,12 +155,20 @@ static struct PyModuleDef core_module = {
 };
 
 PyMODINIT_FUNC PyInit__core(void) {
-    // This line is critical to use the Qiskit C API. Your code will
-    // likely be immediately terminated by the operating system if you
-    // forget to do this.
+    /*
+     * qk_import() must be called once for every compilation unit that
+     * directly uses the Qiskit C API.
+     */
+
+    /* Initialize the Qiskit C API table used by _gateway.c. */
     if (qk_import() < 0) {
         return NULL;
-    };
-    // The standard Python call to initialize a module.
+    }
+
+    /* Initialize the separate Qiskit C API table used by glasgow.c. */
+    if (glasgow_qiskit_import() < 0) {
+        return NULL;
+    }
+
     return PyModuleDef_Init(&core_module);
 }

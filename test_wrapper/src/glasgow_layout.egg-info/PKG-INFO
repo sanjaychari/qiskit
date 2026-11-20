@@ -1,4 +1,5 @@
-Metadata-Version: 2.1
-Name: glasgow-layout
+Metadata-Version: 2.4
+Name: glasgow_layout
 Version: 0.0.1
 Author: Ethan....just Ethan
+Requires-Dist: qiskit~=2.5.0
