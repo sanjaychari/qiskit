@@ -32,8 +32,9 @@ class GlasgowLayout(AnalysisPass):
         )
 
         if layout is not None:
-            self.property_set["layout"] = layout.initial_layout
-            self.property_set["GlasgowLayout_found"] = layout is not None
+            self.property_set["layout"] = layout
+        
+        self.property_set["GlasgowLayout_found"] = layout is not None
 
         return None
 
@@ -49,7 +50,7 @@ class GlasgowPostLayout(AnalysisPass):
         )
 
         if layout is not None:
-            self.property_set["final_layout"] = layout.initial_layout
+            self.property_set["post_layout"] = layout
 
         return None
     
@@ -127,7 +128,7 @@ class GlasgowRouting(PassManagerStagePlugin):
         target = pass_manager_config.target
         
         def _post_layout_found(property_set):
-            return property_set["final_layout"] is not None
+            return property_set["post_layout"] is not None
         
         routing = PassManagerStagePluginManager().get_passmanager_stage(
             "routing",
