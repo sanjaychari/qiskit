@@ -1,0 +1,11 @@
+pyproject.toml
+setup.py
+src/glasgow_layout.egg-info/PKG-INFO
+src/glasgow_layout.egg-info/SOURCES.txt
+src/glasgow_layout.egg-info/dependency_links.txt
+src/glasgow_layout.egg-info/entry_points.txt
+src/glasgow_layout.egg-info/requires.txt
+src/glasgow_layout.egg-info/top_level.txt
+src/glasgow_module/__init__.py
+src/glasgow_module/_gateway.c
+src/glasgow_module/glasgow.c

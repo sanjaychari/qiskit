@@ -1,0 +1,30 @@
+# https://quantum.cloud.ibm.com/docs/en/qiskit/c-extension-for-python
+
+[build-system]
+requires = [
+    "setuptools",
+    "qiskit~=2.5.0",
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "glasgow_layout"
+authors = [
+    { name = "Ethan....just Ethan" },
+]
+version = "0.0.1"
+dependencies = [
+    "qiskit~=2.4.0",
+]
+
+[project.entry-points."qiskit.transpiler.layout"]
+glasgow = "your_package.plugin:GlasgowLayoutPassManager"
+
+[project.entry-points."qiskit.transpiler.routing"]
+glasgow_post = "your_package.plugin:GlasgowRouting"
+
+# If you intend to release your package, you should
+# also set the `license` information, and so on.
+
+[tool.setuptools]
+package-dir = {"" = "src"}
