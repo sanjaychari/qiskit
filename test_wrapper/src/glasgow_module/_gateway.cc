@@ -2,22 +2,6 @@
 
 #include <cstdlib>
 
-// This API slop comes from here https://quantum.cloud.ibm.com/docs/en/qiskit/c-extension-for-python
-
-static bool init_python_vars(PyObject **dag, QkTarget **target, PyObject *args, PyObject *kwargs){
-    static char dag_kw[] = "dag";
-    static char target_kw[] = "target";
-    static char *const kwlist[] = {dag_kw, target_kw, NULL};
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "OO&", kwlist,
-                                     dag,
-                                     qk_target_convert_from_python, target)) {
-        // An error has occurred. The Python exception state will already
-        // be set, so we need to return the error indicator.
-        return false;
-    }
-    return true;
-}
-
 static PyObject *make_python_layout(
     PyObject *dag,
     const subgraph_vec mapping,
@@ -38,7 +22,6 @@ static PyObject *make_python_layout(
 
     for (uint32_t i = 0; i < n; i++) {
         PyObject *physical = PyLong_FromUnsignedLong(mapping[i]);
-
         if (!physical ||
             PyDict_SetItem(
                 dict,
@@ -50,7 +33,6 @@ static PyObject *make_python_layout(
             Py_DECREF(items);
             return NULL;
         }
-
         Py_DECREF(physical);
     }
 
@@ -61,7 +43,6 @@ static PyObject *make_python_layout(
         Py_DECREF(dict);
         return NULL;
     }
-
     PyObject *cls = PyObject_GetAttrString(module, "Layout");
     Py_DECREF(module);
     if (!cls) {
@@ -70,11 +51,76 @@ static PyObject *make_python_layout(
     }
 
     PyObject *result = PyObject_CallOneArg(cls, dict);
-
     Py_DECREF(cls);
     Py_DECREF(dict);
-
     return result;
+}
+
+static PyObject *py_glasgow_mapping(PyObject *self, PyObject *args, PyObject *kwargs) {
+    (void)self;
+
+    static char dag_kw[] = "dag";
+    static char target_kw[] = "target";
+    static char strict_direction_kw[] = "strict_direction";
+    static char first_call_limit_kw[] = "first_call_limit";
+    static char after_call_limit_kw[] = "after_call_limit";
+    static char max_trials_kw[] = "max_trials";
+    static char *const kwlist[] = {
+        dag_kw,
+        target_kw,
+        strict_direction_kw,
+        first_call_limit_kw,
+        after_call_limit_kw,
+        max_trials_kw,
+        NULL,
+    };
+
+    PyObject *dag_pyobj;
+    QkDag *dag;
+    QkTarget *target;
+    int strict_direction = 0;
+    long long first_call_limit = -1;
+    long long after_call_limit = -1;
+    long long max_trials = -1;
+
+    if (!PyArg_ParseTupleAndKeywords(
+            args,
+            kwargs,
+            "OO&|pLLL",
+            kwlist,
+            &dag_pyobj,
+            qk_target_convert_from_python,
+            &target,
+            &strict_direction,
+            &first_call_limit,
+            &after_call_limit,
+            &max_trials)) {
+        return NULL;
+    }
+
+    dag = qk_dag_borrow_from_python(dag_pyobj);
+    const QISKIT_NODE n = qk_dag_num_qubits(dag);
+    subgraph_vec mapping = (subgraph_vec)malloc(n * sizeof(QISKIT_NODE));
+    if (!mapping)
+        return PyErr_NoMemory();
+
+    if (!glasgow_mapping(
+            dag,
+            target,
+            mapping,
+            strict_direction != 0,
+            first_call_limit,
+            after_call_limit,
+            max_trials)) {
+        free(mapping);
+        if (PyErr_Occurred())
+            return NULL;
+        Py_RETURN_NONE;
+    }
+
+    PyObject *out = make_python_layout(dag_pyobj, mapping, n);
+    free(mapping);
+    return out;
 }
 
 static PyObject *py_glasgow_mapping_post(PyObject *self, PyObject *args, PyObject *kwargs){
@@ -83,97 +129,74 @@ static PyObject *py_glasgow_mapping_post(PyObject *self, PyObject *args, PyObjec
     static char dag_kw[] = "dag";
     static char target_kw[] = "target";
     static char strict_direction_kw[] = "strict_direction";
-    static char *const kwlist[] = {dag_kw, target_kw, strict_direction_kw, NULL};
+    static char first_call_limit_kw[] = "first_call_limit";
+    static char after_call_limit_kw[] = "after_call_limit";
+    static char max_trials_kw[] = "max_trials";
+    static char *const kwlist[] = {
+        dag_kw,
+        target_kw,
+        strict_direction_kw,
+        first_call_limit_kw,
+        after_call_limit_kw,
+        max_trials_kw,
+        NULL,
+    };
 
     PyObject *dag_pyobj;
     QkDag *dag;
     QkTarget *target;
     int strict_direction = 0;
-    subgraph_vec mapping;
-    PyObject *out;
-    QISKIT_NODE N;
+    long long first_call_limit = -1;
+    long long after_call_limit = -1;
+    long long max_trials = -1;
 
     if (!PyArg_ParseTupleAndKeywords(
             args,
             kwargs,
-            "OO&|p",
+            "OO&|pLLL",
             kwlist,
             &dag_pyobj,
             qk_target_convert_from_python,
             &target,
-            &strict_direction)) {
+            &strict_direction,
+            &first_call_limit,
+            &after_call_limit,
+            &max_trials)) {
         return NULL;
     }
 
     dag = qk_dag_borrow_from_python(dag_pyobj);
-    N = qk_dag_num_qubits(dag);
-
-    mapping = (subgraph_vec)malloc(N * sizeof(QISKIT_NODE));
-    if (!mapping) {
+    const QISKIT_NODE n = qk_dag_num_qubits(dag);
+    subgraph_vec mapping = (subgraph_vec)malloc(n * sizeof(QISKIT_NODE));
+    if (!mapping)
         return PyErr_NoMemory();
-    }
-    if (!glasgow_mapping_post(dag, target, mapping, strict_direction != 0)) {
+
+    if (!glasgow_mapping_post(
+            dag,
+            target,
+            mapping,
+            strict_direction != 0,
+            first_call_limit,
+            after_call_limit,
+            max_trials)) {
         free(mapping);
-        if (PyErr_Occurred()) {
+        if (PyErr_Occurred())
             return NULL;
-        }
         Py_RETURN_NONE;
     }
-    out = make_python_layout(dag_pyobj, mapping, N);
 
+    PyObject *out = make_python_layout(dag_pyobj, mapping, n);
     free(mapping);
-
-    return out;
-}
-
-static PyObject *py_glasgow_mapping(PyObject *self, PyObject *args, PyObject *kwargs) {
-    (void)self;
-    // Define space to hold the C-native handles we will parse out of the
-    // Python-space inputs.
-    PyObject *dag_pyobj;
-    QkDag *dag;
-
-    QkTarget *target;
-    subgraph_vec mapping;
-    PyObject *out;
-    QISKIT_NODE N;
-
-    if (!init_python_vars(&dag_pyobj, &target, args, kwargs)) {
-        return NULL;
-    }
-
-    dag = qk_dag_borrow_from_python(dag_pyobj);
-    N = qk_dag_num_qubits(dag);
-
-    // Now we have C-native types, we can delegate to our C logic.
-
-    mapping = (subgraph_vec)malloc(N * sizeof(QISKIT_NODE));
-    if (!mapping) {
-        return PyErr_NoMemory();
-    }
-    if (!glasgow_mapping(dag, target, mapping)) {
-        free(mapping);
-        if (PyErr_Occurred()) {
-            return NULL;
-        }
-        Py_RETURN_NONE;
-    }
-    out = make_python_layout(dag_pyobj, mapping, N);
-
-    free(mapping);
-
     return out;
 }
 
 static PyMethodDef core_methods[] = {
-    // This entry is our function, cast to the correct type.
     {"glasgow_mapping",
      (PyCFunction)(void (*)(void))py_glasgow_mapping,
      METH_VARARGS | METH_KEYWORDS, ""},
     {"glasgow_mapping_post",
      (PyCFunction)(void (*)(void))py_glasgow_mapping_post,
      METH_VARARGS | METH_KEYWORDS, ""},
-    // A sentinel marking the end of the list.
     {NULL, NULL, 0, NULL},
 };
 
@@ -184,20 +207,9 @@ static struct PyModuleDef core_module = {
 };
 
 PyMODINIT_FUNC PyInit__core(void) {
-    /*
-     * qk_import() must be called once for every compilation unit that
-     * directly uses the Qiskit C API.
-     */
-
-    /* Initialize the Qiskit C API table used by _gateway.cc. */
-    if (qk_import() < 0) {
+    if (qk_import() < 0)
         return NULL;
-    }
-
-    /* Initialize the separate Qiskit C API table used by glasgow.cc. */
-    if (glasgow_qiskit_import() < 0) {
+    if (glasgow_qiskit_import() < 0)
         return NULL;
-    }
-
     return PyModuleDef_Init(&core_module);
 }

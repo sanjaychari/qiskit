@@ -15,12 +15,25 @@ typedef QISKIT_NODE *subgraph_vec;
 int glasgow_qiskit_import(void);
 
 /*
- * Return true and fill mapping[0:qk_dag_num_qubits(dag)] when Glasgow found a
- * mapping. Return false without setting a Python exception for the normal
- * no-solution/no-improvement cases. On an internal error, return false with a
- * Python exception set.
+ * Limits use -1 for Qiskit's ``None``.  ``max_trials == 0`` means unbounded,
+ * matching VF2PassConfiguration's normalized legacy semantics.
  */
-bool glasgow_mapping(QkDag *dag, QkTarget *target, subgraph_vec mapping);
-bool glasgow_mapping_post(QkDag *dag, QkTarget *target, subgraph_vec mapping, bool strict_direction);
+bool glasgow_mapping(
+    QkDag *dag,
+    QkTarget *target,
+    subgraph_vec mapping,
+    bool strict_direction,
+    int64_t first_call_limit,
+    int64_t after_call_limit,
+    int64_t max_trials);
+
+bool glasgow_mapping_post(
+    QkDag *dag,
+    QkTarget *target,
+    subgraph_vec mapping,
+    bool strict_direction,
+    int64_t first_call_limit,
+    int64_t after_call_limit,
+    int64_t max_trials);
 
 #endif

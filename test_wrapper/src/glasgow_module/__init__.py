@@ -13,6 +13,7 @@ from qiskit import user_config
 from qiskit.passmanager import ConditionalController
 from qiskit.transpiler import AnalysisPass, PassManager
 from qiskit.transpiler.exceptions import TranspilerError
+from qiskit.transpiler.target import Target
 from qiskit.transpiler.passes import (
     ApplyLayout,
     BarrierBeforeFinalMeasurements,
@@ -71,24 +72,92 @@ def _get_post_layout_limits(
     )
 
 
+def _normalize_call_limit(call_limit):
+    """Normalize Qiskit's legacy VF2 call_limit form to two native integers."""
+    if call_limit is None:
+        return -1, -1
+    if isinstance(call_limit, int):
+        return call_limit, call_limit
+    before, after = call_limit
+    return (-1 if before is None else int(before), -1 if after is None else int(after))
+
+
+def _normalize_max_trials(max_trials):
+    # VF2PassConfiguration.from_legacy_api: None means graph-size default, negative means unlimited.
+    if max_trials is None:
+        return -1
+    return 0 if max_trials < 0 else int(max_trials)
+
+
+def _apply_glasgow_post_layout_condition(property_set):
+    """Apply a Glasgow post-layout iff the immediately preceding pass found one.
+
+    Qiskit's stock ``common._apply_post_layout_condition`` is intentionally
+    VF2-specific: it checks ``VF2PostLayout_stop_reason``.  A plugin replacing
+    VF2PostLayout must not reuse that predicate or its ``post_layout`` result
+    will never be applied.
+    """
+    return property_set["post_layout"] is not None
+
+
+def _build_dummy_target(coupling_map):
+    return Target.from_configuration(
+        basis_gates=["u", "cx"],
+        num_qubits=coupling_map.size(),
+        coupling_map=coupling_map,
+    )
+
+
 class GlasgowLayoutStopReason(Enum):
     SOLUTION_FOUND = "solution found"
     NO_SOLUTION_FOUND = "nonexistent solution"
 
 
 class GlasgowLayout(AnalysisPass):
-    def __init__(self, target):
+    def __init__(
+        self,
+        coupling_map=None,
+        strict_direction=False,
+        seed=None,
+        call_limit=None,
+        time_limit=None,
+        max_trials=None,
+        target=None,
+    ):
         super().__init__()
         self.target = target
+        self.coupling_map = coupling_map
+        self.strict_direction = strict_direction
+        self.seed = seed
+        self.call_limit = call_limit
+        self.time_limit = time_limit
+        self.max_trials = max_trials
 
     def run(self, dag):
-        if self.target is None:
-            layout = None
+        if self.target is None and self.coupling_map is None:
+            raise TranspilerError("coupling_map or target must be specified.")
+
+        if self.coupling_map is None:
+            target = self.target
+        elif self.target is None:
+            target = _build_dummy_target(self.coupling_map)
         else:
-            layout = _core.glasgow_mapping(
-                dag=dag,
-                target=self.target,
+            target_coupling = self.target.build_coupling_map()
+            target = (
+                _build_dummy_target(self.coupling_map)
+                if target_coupling is None
+                else self.target
             )
+
+        first_call_limit, after_call_limit = _normalize_call_limit(self.call_limit)
+        layout = _core.glasgow_mapping(
+            dag=dag,
+            target=target,
+            strict_direction=self.strict_direction,
+            first_call_limit=first_call_limit,
+            after_call_limit=after_call_limit,
+            max_trials=_normalize_max_trials(self.max_trials),
+        )
 
         found = layout is not None
         self.property_set["GlasgowLayout_found"] = found
@@ -114,10 +183,8 @@ class GlasgowPostLayout(AnalysisPass):
     ):
         super().__init__()
         self.target = target
-        # Retain the same constructor surface as VF2PostLayout so the stage
-        # plugins can mirror upstream Qiskit exactly.  Glasgow currently uses
-        # its own internal search termination policy; seed/call_limit/max_trials
-        # are recorded here for API/stage parity.
+        # Keep the same constructor surface as VF2PostLayout. The call/trial
+        # limits are forwarded to Glasgow's native branch-and-bound search.
         self.seed = seed
         self.call_limit = call_limit
         self.max_trials = max_trials
@@ -127,13 +194,24 @@ class GlasgowPostLayout(AnalysisPass):
         if self.target is None:
             return None
 
+        # ``ApplyLayout`` normally consumes and removes ``post_layout``.  Clear
+        # it here as well so a failed later GlasgowPostLayout can never expose a
+        # stale result from an earlier invocation.
+        self.property_set["post_layout"] = None
+
+        first_call_limit, after_call_limit = _normalize_call_limit(self.call_limit)
         layout = _core.glasgow_mapping_post(
             dag=dag,
             target=self.target,
             strict_direction=self.strict_direction,
+            first_call_limit=first_call_limit,
+            after_call_limit=after_call_limit,
+            max_trials=_normalize_max_trials(self.max_trials),
         )
 
-        if layout is not None:
+        found = layout is not None
+        self.property_set["GlasgowPostLayout_found"] = found
+        if found:
             self.property_set["post_layout"] = layout
 
         return None
@@ -198,7 +276,12 @@ class GlasgowLayoutPassManager(PassManagerStagePlugin):
                 )
             )
 
-            choose_layout_1 = GlasgowLayout(pass_manager_config.target)
+            choose_layout_1 = GlasgowLayout(
+                coupling_map=pass_manager_config.coupling_map,
+                seed=-1,
+                call_limit=(50_000, 1_000),
+                target=pass_manager_config.target,
+            )
             layout.append(
                 ConditionalController(
                     choose_layout_1,
@@ -229,7 +312,12 @@ class GlasgowLayoutPassManager(PassManagerStagePlugin):
             )
 
         elif optimization_level == 2:
-            choose_layout_0 = GlasgowLayout(pass_manager_config.target)
+            choose_layout_0 = GlasgowLayout(
+                coupling_map=pass_manager_config.coupling_map,
+                seed=-1,
+                call_limit=(5_000_000, 10_000),
+                target=pass_manager_config.target,
+            )
             layout.append(
                 ConditionalController(
                     choose_layout_0,
@@ -260,7 +348,12 @@ class GlasgowLayoutPassManager(PassManagerStagePlugin):
             )
 
         elif optimization_level == 3:
-            choose_layout_0 = GlasgowLayout(pass_manager_config.target)
+            choose_layout_0 = GlasgowLayout(
+                coupling_map=pass_manager_config.coupling_map,
+                seed=-1,
+                call_limit=(30_000_000, 100_000),
+                target=pass_manager_config.target,
+            )
             layout.append(
                 ConditionalController(
                     choose_layout_0,
@@ -376,7 +469,7 @@ def _generate_glasgow_routing_passmanager(
         routing.append(
             ConditionalController(
                 ApplyLayout(),
-                condition=common._apply_post_layout_condition,
+                condition=_apply_glasgow_post_layout_condition,
             )
         )
 
@@ -519,7 +612,7 @@ class GlasgowOptimizationPassManager(PassManagerStagePlugin):
                         ),
                         ConditionalController(
                             ApplyLayout(),
-                            condition=common._apply_post_layout_condition,
+                            condition=_apply_glasgow_post_layout_condition,
                         ),
                     ]
                 )
