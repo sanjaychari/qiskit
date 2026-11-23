@@ -1,9 +1,13 @@
-#include "glasgow.h" // TODO: This is where we will work 
+#include "glasgow.h"
+
+#include <cstdlib>
 
 // This API slop comes from here https://quantum.cloud.ibm.com/docs/en/qiskit/c-extension-for-python
 
 static bool init_python_vars(PyObject **dag, QkTarget **target, PyObject *args, PyObject *kwargs){
-    static char *const kwlist[] = {"dag", "target", NULL};
+    static char dag_kw[] = "dag";
+    static char target_kw[] = "target";
+    static char *const kwlist[] = {dag_kw, target_kw, NULL};
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, "OO&", kwlist,
                                      dag,
                                      qk_target_convert_from_python, target)) {
@@ -74,29 +78,47 @@ static PyObject *make_python_layout(
 }
 
 static PyObject *py_glasgow_mapping_post(PyObject *self, PyObject *args, PyObject *kwargs){
-    
+    (void)self;
+
+    static char dag_kw[] = "dag";
+    static char target_kw[] = "target";
+    static char strict_direction_kw[] = "strict_direction";
+    static char *const kwlist[] = {dag_kw, target_kw, strict_direction_kw, NULL};
+
     PyObject *dag_pyobj;
     QkDag *dag;
-
     QkTarget *target;
+    int strict_direction = 0;
     subgraph_vec mapping;
     PyObject *out;
     QISKIT_NODE N;
 
-    if (!init_python_vars(&dag_pyobj, &target, args, kwargs)) {
+    if (!PyArg_ParseTupleAndKeywords(
+            args,
+            kwargs,
+            "OO&|p",
+            kwlist,
+            &dag_pyobj,
+            qk_target_convert_from_python,
+            &target,
+            &strict_direction)) {
         return NULL;
     }
 
     dag = qk_dag_borrow_from_python(dag_pyobj);
     N = qk_dag_num_qubits(dag);
 
-    // Now we have C-native types, we can delegate to our C logic.
-
-    mapping = (subgraph_vec)malloc(qk_target_num_qubits(target) * sizeof(QISKIT_NODE));
+    mapping = (subgraph_vec)malloc(N * sizeof(QISKIT_NODE));
     if (!mapping) {
         return PyErr_NoMemory();
     }
-    glasgow_mapping_post(dag, target, mapping);
+    if (!glasgow_mapping_post(dag, target, mapping, strict_direction != 0)) {
+        free(mapping);
+        if (PyErr_Occurred()) {
+            return NULL;
+        }
+        Py_RETURN_NONE;
+    }
     out = make_python_layout(dag_pyobj, mapping, N);
 
     free(mapping);
@@ -105,6 +127,7 @@ static PyObject *py_glasgow_mapping_post(PyObject *self, PyObject *args, PyObjec
 }
 
 static PyObject *py_glasgow_mapping(PyObject *self, PyObject *args, PyObject *kwargs) {
+    (void)self;
     // Define space to hold the C-native handles we will parse out of the
     // Python-space inputs.
     PyObject *dag_pyobj;
@@ -124,11 +147,17 @@ static PyObject *py_glasgow_mapping(PyObject *self, PyObject *args, PyObject *kw
 
     // Now we have C-native types, we can delegate to our C logic.
 
-    mapping = (subgraph_vec)malloc(qk_target_num_qubits(target) * sizeof(QISKIT_NODE));
+    mapping = (subgraph_vec)malloc(N * sizeof(QISKIT_NODE));
     if (!mapping) {
         return PyErr_NoMemory();
     }
-    glasgow_mapping(dag, target, mapping);
+    if (!glasgow_mapping(dag, target, mapping)) {
+        free(mapping);
+        if (PyErr_Occurred()) {
+            return NULL;
+        }
+        Py_RETURN_NONE;
+    }
     out = make_python_layout(dag_pyobj, mapping, N);
 
     free(mapping);
@@ -160,12 +189,12 @@ PyMODINIT_FUNC PyInit__core(void) {
      * directly uses the Qiskit C API.
      */
 
-    /* Initialize the Qiskit C API table used by _gateway.c. */
+    /* Initialize the Qiskit C API table used by _gateway.cc. */
     if (qk_import() < 0) {
         return NULL;
     }
 
-    /* Initialize the separate Qiskit C API table used by glasgow.c. */
+    /* Initialize the separate Qiskit C API table used by glasgow.cc. */
     if (glasgow_qiskit_import() < 0) {
         return NULL;
     }

@@ -1,2 +1,8 @@
 .vscode/
 build/
+__pycache__/
+*.py[cod]
+*.so
+*.dylib
+.DS_Store
+src/*.egg-info/

@@ -1,5 +1,9 @@
 [qiskit.transpiler.layout]
 glasgow = glasgow_module:GlasgowLayoutPassManager
 
+[qiskit.transpiler.optimization]
+glasgow = glasgow_module:GlasgowOptimizationPassManager
+
 [qiskit.transpiler.routing]
-glasgow_post = glasgow_module:GlasgowRouting
+glasgow = glasgow_module:GlasgowRoutingPassManager
+glasgow_post = glasgow_module:GlasgowRoutingPassManager
