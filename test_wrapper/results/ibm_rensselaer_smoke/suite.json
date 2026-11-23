@@ -1,0 +1,125 @@
+[
+  {
+    "circuit_id": "graph_path_n8",
+    "circuit_seed": null,
+    "depth_before_transpile": 9,
+    "family": "graph_path",
+    "metadata": {},
+    "num_qubits": 8,
+    "size_before_transpile": 23,
+    "twoq_before_transpile": 7
+  },
+  {
+    "circuit_id": "graph_path_n16",
+    "circuit_seed": null,
+    "depth_before_transpile": 17,
+    "family": "graph_path",
+    "metadata": {},
+    "num_qubits": 16,
+    "size_before_transpile": 47,
+    "twoq_before_transpile": 15
+  },
+  {
+    "circuit_id": "real_amplitudes_linear_n8_r2",
+    "circuit_seed": null,
+    "depth_before_transpile": 13,
+    "family": "real_amplitudes_linear",
+    "metadata": {},
+    "num_qubits": 8,
+    "size_before_transpile": 46,
+    "twoq_before_transpile": 14
+  },
+  {
+    "circuit_id": "real_amplitudes_linear_n16_r2",
+    "circuit_seed": null,
+    "depth_before_transpile": 21,
+    "family": "real_amplitudes_linear",
+    "metadata": {},
+    "num_qubits": 16,
+    "size_before_transpile": 94,
+    "twoq_before_transpile": 30
+  },
+  {
+    "circuit_id": "graph_cycle_n12",
+    "circuit_seed": null,
+    "depth_before_transpile": 13,
+    "family": "graph_cycle",
+    "metadata": {},
+    "num_qubits": 12,
+    "size_before_transpile": 36,
+    "twoq_before_transpile": 12
+  },
+  {
+    "circuit_id": "graph_ladder_n12",
+    "circuit_seed": null,
+    "depth_before_transpile": 10,
+    "family": "graph_ladder",
+    "metadata": {},
+    "num_qubits": 12,
+    "size_before_transpile": 40,
+    "twoq_before_transpile": 16
+  },
+  {
+    "circuit_id": "graph_backend_subgraph_n30",
+    "circuit_seed": null,
+    "depth_before_transpile": 15,
+    "family": "graph_backend_subgraph",
+    "metadata": {
+      "known_embedding": [
+        11,
+        12,
+        21,
+        1,
+        10,
+        13,
+        22,
+        2,
+        31,
+        20,
+        0,
+        14,
+        23,
+        3,
+        32,
+        41,
+        30,
+        15,
+        24,
+        4,
+        33,
+        42,
+        51,
+        40,
+        16,
+        25,
+        5,
+        34,
+        43,
+        52
+      ]
+    },
+    "num_qubits": 30,
+    "size_before_transpile": 107,
+    "twoq_before_transpile": 47
+  },
+  {
+    "circuit_id": "quantum_volume_n8_d8_cseed11",
+    "circuit_seed": 11,
+    "depth_before_transpile": 9,
+    "family": "quantum_volume",
+    "metadata": {},
+    "num_qubits": 8,
+    "size_before_transpile": 40,
+    "twoq_before_transpile": 32
+  },
+  {
+    "circuit_id": "qft_n8",
+    "circuit_seed": null,
+    "depth_before_transpile": 17,
+    "family": "qft",
+    "metadata": {},
+    "num_qubits": 8,
+    "size_before_transpile": 48,
+    "twoq_before_transpile": 32
+  }
+]

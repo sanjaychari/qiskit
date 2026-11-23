@@ -1,0 +1,23 @@
+{
+  "backend": "ibm_rensselaer",
+  "configurations": [
+    "vf2_vf2",
+    "vf2_glasgow",
+    "glasgow_vf2",
+    "glasgow_glasgow"
+  ],
+  "created_utc": "2026-11-23T19:42:13.919609+00:00",
+  "glasgow_core_sha256": "18a808573d122e5341c80c51b380177ed937cf1f98d1c4823ba6ac291824dc5c",
+  "glasgow_layout_package": "0.0.1",
+  "glasgow_module": "/Users/sanjaychari/Documents/RPI/PhD/Quantum Computer Organization/Project/qiskit-glasgow-work/qiskit/test_wrapper/src/glasgow_module/__init__.py",
+  "optimization_level": 3,
+  "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "python": "3.15.2 | packaged by Anaconda, Inc. | (main, Oct 28 2026, 13:54:07) [Clang 21.1.8 ]",
+  "qiskit": "2.5.2",
+  "qiskit_ibm_runtime": "0.52.1",
+  "solver_git_commit": "6f3e7e4e34ac5ddec867aeec1c9e52aeb19f9b1c",
+  "suite": "smoke",
+  "transpiler_seed_count": 3,
+  "transpiler_seed_start": 0,
+  "wrapper_git_commit": "8de23aac180fefe879d405582850136394cdbebf"
+}

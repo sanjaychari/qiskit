@@ -74,6 +74,44 @@ namespace
         return static_cast<size_t>(left) * n + right;
     }
 
+    auto target_operation_name(QkTarget * target, size_t op_index) -> std::string
+    {
+        char * raw_name = qk_target_op_name(target, op_index);
+        if (! raw_name)
+            return {};
+        std::string name(raw_name);
+        qk_str_free(raw_name);
+        return name;
+    }
+
+    auto exact_interaction_width(
+        const ExactInteractionData & interactions,
+        const std::string & operation_name) -> std::optional<uint32_t>
+    {
+        bool used_as_one_qubit = false;
+        bool used_as_two_qubit = false;
+
+        for (const auto & uses : interactions.one_uses) {
+            if (uses.find(operation_name) != uses.end()) {
+                used_as_one_qubit = true;
+                break;
+            }
+        }
+        for (const auto & uses : interactions.two_uses) {
+            if (uses.find(operation_name) != uses.end()) {
+                used_as_two_qubit = true;
+                break;
+            }
+        }
+
+        // A name used at both widths is effectively variadic for our purposes.  Qiskit's
+        // exact global-operation handling skips TargetOperation::Variadic, so do the same.
+        if (used_as_one_qubit == used_as_two_qubit)
+            return std::nullopt;
+        return used_as_one_qubit ? std::optional<uint32_t>{1u}
+                                 : std::optional<uint32_t>{2u};
+    }
+
     auto neg_log_fidelity(double error) -> double
     {
         if (std::isnan(error) || error <= 0.0)
@@ -113,38 +151,27 @@ namespace
 
         const size_t num_operations = qk_target_num_instructions(target);
         for (size_t op_index = 0; op_index < num_operations; ++op_index) {
-            QkTargetOp operation{};
-            qk_target_op_get(target, op_index, &operation);
-            const std::string operation_name = operation.name ? operation.name : "";
-
-            const bool relevant = operation.num_qubits == 1 || operation.num_qubits == 2;
-            if (! relevant) {
-                qk_target_op_clear(&operation);
-                continue;
-            }
-
-            if (operation.num_qubits == 2
-                && qk_target_op_qargs_index(target, op_index, nullptr) != SIZE_MAX) {
-                qk_target_op_clear(&operation);
-                return false;
-            }
-
+            // Do not use qk_target_op_get() here.  In Qiskit 2.5.x that C API function
+            // aborts the process for Target operations whose Python/Rust operation type is
+            // not one of its small set of materializable C operation kinds (notably dynamic
+            // control-flow operations present on IBM hardware Targets).  For VF2 scoring we
+            // only need the operation name, qargs and properties, all of which have dedicated
+            // C API accessors that work without materializing the operation object.
+            const std::string operation_name = target_operation_name(target, op_index);
             const size_t num_properties = qk_target_op_num_properties(target, op_index);
+            bool saw_global = false;
+            bool saw_concrete_two_qubit = false;
+
             for (size_t property_index = 0; property_index < num_properties; ++property_index) {
                 uint32_t * qargs = nullptr;
                 uint32_t qargs_len = 0;
                 qk_target_op_qargs(target, op_index, property_index, &qargs, &qargs_len);
 
-                // Qiskit's average path cannot construct a finite coupling graph when a 2q
-                // operation is global. Global 1q operations are skipped by build_average_error_map.
                 if (! qargs) {
-                    if (operation.num_qubits == 2) {
-                        qk_target_op_clear(&operation);
-                        return false;
-                    }
+                    saw_global = true;
                     continue;
                 }
-                if (qargs_len != operation.num_qubits)
+                if (qargs_len != 1 && qargs_len != 2)
                     continue;
 
                 has_concrete_qargs = true;
@@ -160,6 +187,7 @@ namespace
                         one_samples[q].push_back({operation_name, error});
                 }
                 else {
+                    saw_concrete_two_qubit = true;
                     const uint32_t left = qargs[0];
                     const uint32_t right = qargs[1];
                     if (left >= n || right >= n)
@@ -170,7 +198,13 @@ namespace
                 }
             }
 
-            qk_target_op_clear(&operation);
+            // Match Qiskit's average path for global 2q operations whenever the operation also
+            // exposes concrete 2q qargs: the average coupling graph is not meaningful, so bail.
+            // Global-only operations whose arity is not exposed by the C iteration API are
+            // ignored.  On IBM hardware Targets these are dynamic-control-flow operations, which
+            // are irrelevant to the 1q/2q VF2 interaction graph.
+            if (saw_global && saw_concrete_two_qubit)
+                return false;
         }
 
         // build_average_coupling_map returns None when Target::num_qargs() is zero.
@@ -248,7 +282,10 @@ namespace
         return true;
     }
 
-    auto build_exact_target_data(QkTarget * target, ExactTargetData & out) -> bool
+    auto build_exact_target_data(
+        QkTarget * target,
+        const ExactInteractionData & interactions,
+        ExactTargetData & out) -> bool
     {
         const uint32_t n = qk_target_num_qubits(target);
         out.num_qubits = n;
@@ -259,25 +296,21 @@ namespace
         std::vector<std::pair<std::string, uint32_t>> global_operations;
         const size_t num_operations = qk_target_num_instructions(target);
         for (size_t op_index = 0; op_index < num_operations; ++op_index) {
-            QkTargetOp operation{};
-            qk_target_op_get(target, op_index, &operation);
-            const std::string operation_name = operation.name ? operation.name : "";
-            if (operation.num_qubits != 1 && operation.num_qubits != 2) {
-                qk_target_op_clear(&operation);
-                continue;
-            }
-
-            bool is_global = qk_target_op_qargs_index(target, op_index, nullptr) != SIZE_MAX;
+            const std::string operation_name = target_operation_name(target, op_index);
             const size_t num_properties = qk_target_op_num_properties(target, op_index);
+            bool saw_global = false;
+            bool saw_one_qubit = false;
+            bool saw_two_qubit = false;
+
             for (size_t property_index = 0; property_index < num_properties; ++property_index) {
                 uint32_t * qargs = nullptr;
                 uint32_t qargs_len = 0;
                 qk_target_op_qargs(target, op_index, property_index, &qargs, &qargs_len);
                 if (! qargs) {
-                    is_global = true;
+                    saw_global = true;
                     continue;
                 }
-                if (qargs_len != operation.num_qubits)
+                if (qargs_len != 1 && qargs_len != 2)
                     continue;
 
                 out.has_concrete_qargs = true;
@@ -286,19 +319,31 @@ namespace
                 const double cost = neg_log_fidelity(properties.error);
 
                 if (qargs_len == 1) {
+                    saw_one_qubit = true;
                     if (qargs[0] < n)
                         out.one_costs[qargs[0]][operation_name] = cost;
                 }
                 else if (qargs[0] < n && qargs[1] < n) {
+                    saw_two_qubit = true;
                     const size_t index = matrix_index(n, qargs[0], qargs[1]);
                     out.two_costs[index][operation_name] = cost;
                     out.structural_edge[index] = true;
                 }
             }
 
-            if (is_global)
-                global_operations.emplace_back(operation_name, operation.num_qubits);
-            qk_target_op_clear(&operation);
+            if (saw_global) {
+                std::optional<uint32_t> width;
+                if (saw_one_qubit != saw_two_qubit)
+                    width = saw_one_qubit ? 1u : 2u;
+                else if (! saw_one_qubit && ! saw_two_qubit)
+                    width = exact_interaction_width(interactions, operation_name);
+
+                // If both widths were observed, the operation is effectively variadic and Qiskit's
+                // exact global handling skips it.  If neither width can be inferred and the circuit
+                // does not use the operation, it is likewise irrelevant to this VF2 problem.
+                if (width)
+                    global_operations.emplace_back(operation_name, *width);
+            }
         }
 
         // build_exact_coupling_map gives up when there are only global operations.
@@ -313,7 +358,7 @@ namespace
                 for (auto & costs : out.one_costs)
                     costs[name] = 0.0;
             }
-            else {
+            else if (width == 2) {
                 for (uint32_t left = 0; left < n; ++left) {
                     for (uint32_t right = 0; right < n; ++right) {
                         const size_t index = matrix_index(n, left, right);
@@ -794,7 +839,7 @@ namespace
         ExactInteractionData interactions;
         ExactTargetData target;
         if (! build_exact_interactions(dag, interactions)
-            || ! build_exact_target_data(target_handle, target))
+            || ! build_exact_target_data(target_handle, interactions, target))
             return false;
         if (interactions.num_qubits > target.num_qubits)
             return false;
